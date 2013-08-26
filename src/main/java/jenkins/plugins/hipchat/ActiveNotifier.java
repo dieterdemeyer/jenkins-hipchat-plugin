@@ -1,7 +1,10 @@
 package jenkins.plugins.hipchat;
 
 import hudson.Util;
-import hudson.model.*;
+import hudson.model.AbstractBuild;
+import hudson.model.AbstractProject;
+import hudson.model.CauseAction;
+import hudson.model.Result;
 import hudson.scm.ChangeLogSet;
 import hudson.scm.ChangeLogSet.AffectedFile;
 import hudson.scm.ChangeLogSet.Entry;
@@ -57,6 +60,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
     }
 
     public void completed(AbstractBuild r) {
+        //getHipChat(r).publish(getBuildStatusMessage(r), getBuildColor(r));
         AbstractProject<?, ?> project = r.getProject();
         HipChatNotifier.HipChatJobProperty jobProperty = project.getProperty(HipChatNotifier.HipChatJobProperty.class);
         Result result = r.getResult();
@@ -77,6 +81,11 @@ public class ActiveNotifier implements FineGrainedNotifier {
             logger.info("No change set computed...");
             return null;
         }
+
+        /*MessageBuilder message = new MessageBuilder(notifier, r);
+        message.appendChanges();
+        return message.appendOpenLink().toString();*/
+
         ChangeLogSet changeSet = r.getChangeSet();
         List<Entry> entries = new LinkedList<Entry>();
         Set<AffectedFile> files = new HashSet<AffectedFile>();
@@ -109,8 +118,12 @@ public class ActiveNotifier implements FineGrainedNotifier {
             return "green";
         } else if (result == Result.FAILURE) {
             return "red";
-        } else {
+        } else if (result == Result.UNSTABLE) {
             return "yellow";
+        } else if (result == Result.ABORTED) {
+            return "gray";
+        } else {
+            return "purple";
         }
     }
 
@@ -118,6 +131,7 @@ public class ActiveNotifier implements FineGrainedNotifier {
         MessageBuilder message = new MessageBuilder(notifier, r);
         message.appendStatusMessage();
         message.appendDuration();
+        message.appendChanges();
         return message.appendOpenLink().toString();
     }
 
@@ -133,6 +147,51 @@ public class ActiveNotifier implements FineGrainedNotifier {
             startMessage();
         }
 
+        public void appendChanges() {
+            AbstractProject<?, ?> project = build.getProject();
+            HipChatNotifier.HipChatJobProperty jobProperty = project.getProperty(HipChatNotifier.HipChatJobProperty.class);
+
+            ChangeLogSet changeSet = build.getChangeSet();
+
+            if (changeSet.isEmptySet()) {
+                logger.info("Empty change...");
+                return;
+            }
+
+            List<Entry> entries = new LinkedList<Entry>();
+            Set<AffectedFile> files = new HashSet<AffectedFile>();
+            for (Object o : changeSet.getItems()) {
+                Entry entry = (Entry) o;
+                logger.info("Entry " + o);
+                entries.add(entry);
+                files.addAll(entry.getAffectedFiles());
+            }
+
+            if (jobProperty != null && jobProperty.getIncludeChangeDetails()) {
+                message.append(" Started by changes:");
+                for (Entry entry : entries) {
+                    final String commitMsg = entry.getMsg().length() > 45
+                            ? entry.getMsg().substring(0, 45) + "..."
+                            : entry.getMsg();
+                    final Integer fileCount = entry.getAffectedFiles().size();
+                    message.append("<br>&nbsp;&nbsp;" + commitMsg
+                            + " [" + entry.getAuthor().getDisplayName()
+                            + " / " + fileCount + " file(s)"
+                            + "]");
+                }
+            } else {
+                Set<String> authors = new HashSet<String>();
+                for (Entry entry : entries) {
+                    authors.add(entry.getAuthor().getDisplayName());
+                }
+                message.append(" Started by changes from ");
+                message.append(StringUtils.join(authors, ", "));
+                message.append(" (");
+                message.append(files.size());
+                message.append(" file(s) changed)");
+            }
+        }
+
         public MessageBuilder appendStatusMessage() {
             message.append(getStatusMessage(build));
             return this;
@@ -143,9 +202,6 @@ public class ActiveNotifier implements FineGrainedNotifier {
                 return "Starting...";
             }
             Result result = r.getResult();
-            Run previousBuild = r.getProject().getLastBuild().getPreviousBuild();
-            Result previousResult = (previousBuild != null) ? previousBuild.getResult() : Result.SUCCESS;
-            if (result == Result.SUCCESS && previousResult == Result.FAILURE) return "Back to normal";
             if (result == Result.SUCCESS) return "Success";
             if (result == Result.FAILURE) return "<b>FAILURE</b>";
             if (result == Result.ABORTED) return "ABORTED";

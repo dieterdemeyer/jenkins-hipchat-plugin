@@ -48,9 +48,8 @@ public class HipChatNotifier extends Notifier {
         return sendAs;
     }
 
-
     @DataBoundConstructor
-    public HipChatNotifier(final String authToken, final String room, String buildServerUrl, final String sendAs) {
+    public HipChatNotifier(String authToken, String room, String buildServerUrl, String sendAs) {
         super();
         this.authToken = authToken;
         this.buildServerUrl = buildServerUrl;
@@ -62,8 +61,9 @@ public class HipChatNotifier extends Notifier {
         return BuildStepMonitor.BUILD;
     }
 
-    public HipChatService newHipChatService(final String room) {
-        return new StandardHipChatService(getAuthToken(), room == null ? getRoom() : room, StringUtils.isBlank(getSendAs()) ? "Build Server" : getSendAs());
+    public HipChatService newHipChatService(String room) {
+        return new StandardHipChatService(getAuthToken(), room == null ? getRoom() : room,
+                StringUtils.isBlank(getSendAs()) ? "Build Server" : getSendAs());
     }
 
     @Override
@@ -137,32 +137,34 @@ public class HipChatNotifier extends Notifier {
 
     public static class HipChatJobProperty extends hudson.model.JobProperty<AbstractProject<?, ?>> {
         private String room;
-        private boolean startNotification;
+        private boolean notifyStarted;
         private boolean notifySuccess;
         private boolean notifyAborted;
         private boolean notifyNotBuilt;
         private boolean notifyUnstable;
         private boolean notifyFailure;
         private boolean notifyBackToNormal;
-
+        private boolean includeChangeDetails;
 
         @DataBoundConstructor
         public HipChatJobProperty(String room,
-                                  boolean startNotification,
+                                  boolean notifyStarted,
                                   boolean notifyAborted,
                                   boolean notifyFailure,
                                   boolean notifyNotBuilt,
                                   boolean notifySuccess,
                                   boolean notifyUnstable,
-                                  boolean notifyBackToNormal) {
+                                  boolean notifyBackToNormal,
+                                  boolean includeChangeDetails) {
             this.room = room;
-            this.startNotification = startNotification;
+            this.notifyStarted = notifyStarted;
             this.notifyAborted = notifyAborted;
             this.notifyFailure = notifyFailure;
             this.notifyNotBuilt = notifyNotBuilt;
             this.notifySuccess = notifySuccess;
             this.notifyUnstable = notifyUnstable;
             this.notifyBackToNormal = notifyBackToNormal;
+            this.includeChangeDetails = includeChangeDetails;
         }
 
         @Exported
@@ -171,27 +173,8 @@ public class HipChatNotifier extends Notifier {
         }
 
         @Exported
-        public boolean getStartNotification() {
-            return startNotification;
-        }
-
-        @Exported
-        public boolean getNotifySuccess() {
-            return notifySuccess;
-        }
-
-        @Override
-        public boolean prebuild(AbstractBuild<?, ?> build, BuildListener listener) {
-            if (startNotification) {
-                Map<Descriptor<Publisher>, Publisher> map = build.getProject().getPublishersList().toMap();
-                for (Publisher publisher : map.values()) {
-                    if (publisher instanceof HipChatNotifier) {
-                        logger.info("Invoking Started...");
-                        new ActiveNotifier((HipChatNotifier) publisher).started(build);
-                    }
-                }
-            }
-            return super.prebuild(build, listener);
+        public boolean getNotifyStarted() {
+            return notifyStarted;
         }
 
         @Exported
@@ -210,6 +193,11 @@ public class HipChatNotifier extends Notifier {
         }
 
         @Exported
+        public boolean getNotifySuccess() {
+            return notifySuccess;
+        }
+
+        @Exported
         public boolean getNotifyUnstable() {
             return notifyUnstable;
         }
@@ -217,6 +205,25 @@ public class HipChatNotifier extends Notifier {
         @Exported
         public boolean getNotifyBackToNormal() {
             return notifyBackToNormal;
+        }
+
+        @Exported
+        public boolean getIncludeChangeDetails() {
+            return includeChangeDetails;
+        }
+
+        @Override
+        public boolean prebuild(AbstractBuild<?, ?> build, BuildListener listener) {
+            if (notifyStarted) {
+                Map<Descriptor<Publisher>, Publisher> map = build.getProject().getPublishersList().toMap();
+                for (Publisher publisher : map.values()) {
+                    if (publisher instanceof HipChatNotifier) {
+                        logger.info("Invoking Started...");
+                        new ActiveNotifier((HipChatNotifier) publisher).started(build);
+                    }
+                }
+            }
+            return super.prebuild(build, listener);
         }
 
         @Extension
@@ -233,13 +240,14 @@ public class HipChatNotifier extends Notifier {
             @Override
             public HipChatJobProperty newInstance(StaplerRequest sr, JSONObject formData) throws hudson.model.Descriptor.FormException {
                 return new HipChatJobProperty(sr.getParameter("hipChatProjectRoom"),
-                        sr.getParameter("hipChatStartNotification") != null,
+                        sr.getParameter("hipChatNotifyStarted") != null,
                         sr.getParameter("hipChatNotifyAborted") != null,
                         sr.getParameter("hipChatNotifyFailure") != null,
                         sr.getParameter("hipChatNotifyNotBuilt") != null,
                         sr.getParameter("hipChatNotifySuccess") != null,
                         sr.getParameter("hipChatNotifyUnstable") != null,
-                        sr.getParameter("hipChatNotifyBackToNormal") != null);
+                        sr.getParameter("hipChatNotifyBackToNormal") != null,
+                        sr.getParameter("hipChatIncludeChangeDetails") != null);
             }
         }
     }

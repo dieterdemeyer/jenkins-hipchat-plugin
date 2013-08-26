@@ -1,8 +1,8 @@
-hipchat.iml
 target
 .classpath
-.idea
 .project
 .settings
 bin
 work
+.idea
+hipchat.iml
